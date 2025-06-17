@@ -1,0 +1,54 @@
+--// Game Loader Configuration
+local premium = true -- Change this to false for free users
+local supportedGames, scriptID = {}, {}
+
+if premium then
+    supportedGames = {
+        [7436755782] = "https://api.luarmor.net/files/v4/loaders/483d639ad74a7814ff1057d68cec56c2.lua", -- Grow a Garden
+    }
+    scriptID = {
+        [7436755782] = "483d639ad74a7814ff1057d68cec56c2", -- Grow a Garden
+    }
+else
+    supportedGames = {
+        [7436755782] = "https://api.luarmor.net/files/v4/loaders/65c66a87b33565a9dea1a54b798b6b2a.lua", -- Grow a Garden
+    }
+    scriptID = {
+        --[7436755782] = "65c66a87b33565a9dea1a54b798b6b2a", -- Grow a Garden
+    }
+end
+
+--// Game Name Mapping
+local gameNames = {
+    [7436755782] = "GaG", -- GaG
+}
+
+--// Main Execution
+local gameId = game.GameId
+if supportedGames[gameId] then
+    game.StarterGui:SetCore("SendNotification", {
+        Title = "ZynHub Loaded!",
+        Text = gameNames[gameId] .. " Script Loaded!",
+        Icon = "rbxassetid://99764942615873", -- Replace with your own asset if needed
+        Duration = 5
+    })
+
+    --// Authentication System (Optional)
+    if scriptID[gameId] then
+        local auth_url = game:HttpGet("https://raw.githubusercontent.com/zyronxc1/ZynHub/refs/heads/main/keysystem.lua?token=GHSAT0AAAAAADF2AUWZ5QEFUHTHALKGODK62CRVOQQ") -- Replace with your own keysystem
+        local auth = loadstring(auth_url)()
+        local auth_status = auth(scriptID[gameId])
+        repeat task.wait() until auth_status.validated
+    end
+
+    --// Load Script
+    local gameScript = game:HttpGet(supportedGames[gameId])
+    loadstring(gameScript)()
+else
+    game.StarterGui:SetCore("SendNotification", {
+        Title = "ZynHub Error!",
+        Text = "This game is not supported!",
+        Icon = "rbxassetid://99764942615873", -- Replace with your own asset
+        Duration = 5
+    })
+end
