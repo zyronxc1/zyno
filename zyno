@@ -1,49 +1,181 @@
-local imgui = require("imgui")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
 
-local aimbotEnabled = false
-local aimbotTarget = nil
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
 
-local function drawMenu()
-    if imgui.Begin("Menu", true) then
-        imgui.Text("Menu")
-        imgui.Separator()
-        if imgui.Button("Enable Aimbot") then
-            aimbotEnabled = not aimbotEnabled
+-- Configuration
+local Config = {
+    Enabled = false,
+    Key = Enum.KeyCode.Q,
+    TeamCheck = true,
+    TargetPart = "Head",
+    FOV = 250,
+    Sensitivity = 0.5,
+    ShowFOV = true,
+    FOVColor = Color3.fromRGB(255, 255, 255),
+    LockOnTarget = nil
+}
+
+-- FOV Circle Drawing
+local FOVCircle
+if Config.ShowFOV and Drawing then
+    FOVCircle = Drawing.new("Circle")
+    FOVCircle.Visible = Config.Enabled
+    FOVCircle.Radius = Config.FOV
+    FOVCircle.Color = Config.FOVColor
+    FOVCircle.Thickness = 1
+    FOVCircle.Filled = false
+    FOVCircle.Transparency = 1
+end
+
+-- Toggle function
+local function toggleAimbot()
+    Config.Enabled = not Config.Enabled
+    if FOVCircle then
+        FOVCircle.Visible = Config.Enabled
+    end
+    
+    -- Reset locked target when disabling
+    if not Config.Enabled then
+        Config.LockOnTarget = nil
+    end
+    
+    -- Notification
+    local message = Config.Enabled and "Aimbot: ON" or "Aimbot: OFF"
+    game.StarterGui:SetCore("SendNotification", {
+        Title = "Aimbot",
+        Text = message,
+        Duration = 2
+    })
+end
+
+-- Check if player is on the same team
+local function isTeamMate(player)
+    if not Config.TeamCheck then return false end
+    if not LocalPlayer.Team or not player.Team then return false end
+    
+    return player.Team == LocalPlayer.Team
+end
+
+-- Check if player is valid target
+local function isValidTarget(player)
+    if player == LocalPlayer then return false end
+    if not player.Character then return false end
+    if not player.Character:FindFirstChild("Humanoid") then return false end
+    if player.Character.Humanoid.Health <= 0 then return false end
+    if isTeamMate(player) then return false end
+    if not player.Character:FindFirstChild(Config.TargetPart) then return false end
+    
+    return true
+end
+
+-- Get closest player within FOV for initial target acquisition
+local function getClosestPlayerInFOV()
+    local closestPlayer = nil
+    local shortestDistance = Config.FOV
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if isValidTarget(player) then
+            local targetPart = player.Character:FindFirstChild(Config.TargetPart)
+            
+            if targetPart then
+                local screenPoint, onScreen = Camera:WorldToScreenPoint(targetPart.Position)
+                if onScreen then
+                    local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+                    local targetPos = Vector2.new(screenPoint.X, screenPoint.Y)
+                    local distance = (mousePos - targetPos).Magnitude
+                    
+                    if distance < shortestDistance then
+                        closestPlayer = player
+                        shortestDistance = distance
+                    end
+                end
+            end
         end
-        if aimbotEnabled then
-            imgui.Text("Aimbot is enabled")
+    end
+    
+    return closestPlayer
+end
+
+-- Update FOV circle position
+if FOVCircle then
+    RunService.RenderStepped:Connect(function()
+        FOVCircle.Position = Vector2.new(Mouse.X, Mouse.Y + 36)
+    end)
+end
+
+-- Check if current locked target is still valid
+local function isLockedTargetValid()
+    if not Config.LockOnTarget then return false end
+    return isValidTarget(Config.LockOnTarget)
+end
+
+-- Main aimbot loop
+RunService.RenderStepped:Connect(function()
+    if Config.Enabled then
+        -- Check if we have a locked target and if it's still valid
+        if Config.LockOnTarget and isLockedTargetValid() then
+            local targetPart = Config.LockOnTarget.Character:FindFirstChild(Config.TargetPart)
+            if targetPart then
+                local screenPoint, onScreen = Camera:WorldToScreenPoint(targetPart.Position)
+                
+                -- Only aim if target is on screen
+                if onScreen then
+                    local mousePosition = Vector2.new(Mouse.X, Mouse.Y)
+                    local aimPosition = Vector2.new(screenPoint.X, screenPoint.Y)
+                    
+                    -- Calculate the movement needed
+                    local movement = (aimPosition - mousePosition) * Config.Sensitivity
+                    
+                    -- Move the mouse (requires external input simulation)
+                    mousemoverel(movement.X, movement.Y)
+                end
+            end
+        else
+            -- No valid locked target, acquire a new one
+            local newTarget = getClosestPlayerInFOV()
+            if newTarget then
+                Config.LockOnTarget = newTarget
+                
+                -- Notification for new target
+                game.StarterGui:SetCore("SendNotification", {
+                    Title = "Target Locked",
+                    Text = "Locked onto " .. newTarget.Name,
+                    Duration = 1.5
+                })
+            end
         end
-        imgui.Separator()
-        if imgui.Button("Reset Aimbot") then
-            aimbotTarget = nil
+    end
+end)
+
+-- Input handling for toggle
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Config.Key then
+        toggleAimbot()
+    end
+end)
+
+-- Player removal handling
+Players.PlayerRemoving:Connect(function(player)
+    if Config.LockOnTarget == player then
+        Config.LockOnTarget = nil
+        
+        if Config.Enabled then
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Target Lost",
+                Text = "Target left the game",
+                Duration = 1.5
+            })
         end
-        imgui.End()
     end
-end
+end)
 
-local function updateAimbot()
-    if aimbotEnabled and aimbotTarget then
-        local player = game.Players.LocalPlayer
-        local mouse = player:GetMouse()
-        local aimbotVector = (aimbotTarget.Character.HumanoidRootPart.Position - mouse.Hit.Position).Unit
-        mouse.CFrame = mouse.CFrame + aimbotVector * 10
-    end
-end
-
-local function update()
-    drawMenu()
-    updateAimbot()
-end
-
-local function input(input)
-    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.RightShift then
-        drawMenu()
-    end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 and aimbotEnabled then
-        aimbotTarget = game.Workspace:FindFirstChild(input.UserInputState.Position.X .. "_" .. input.UserInputState.Position.Y .. "_" .. input.UserInputState.Position.Z)
-    end
-end
-
-game:GetService("UserInputService").InputBegan:Connect(input)
-game:GetService("UserInputService").InputChanged:Connect(input)
-game:GetService("RunService").RenderStepped:Connect(update)
+-- Initial notification
+game.StarterGui:SetCore("SendNotification", {
+    Title = "Aimbot Loaded",
+    Text = "Press " .. tostring(Config.Key) .. " to toggle. Will lock onto targets.",
+    Duration = 5
+})
